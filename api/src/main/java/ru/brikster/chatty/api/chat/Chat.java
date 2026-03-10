@@ -146,7 +146,7 @@ public interface Chat {
      * @param componentJson      JSON-component of message to send
      */
     default void sendJsonComponent(Plugin plugin, String componentJson) {
-        sendLegacyMessage(plugin, componentJson, $ -> true);
+        sendJsonComponent(plugin, componentJson, $ -> true);
     }
 
     /**
