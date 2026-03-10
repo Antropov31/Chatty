@@ -23,10 +23,12 @@ public final class ConfigsLoader {
     @Inject
     public void loadChannels(ChatsConfig config,
                              ChatRegistry registry,
-                             ComponentStringConverter componentConverter) {
+                             ComponentStringConverter componentConverter,
+                             BukkitAudiences audiences) {
         config.getChats().forEach((chatId, chatConfig) -> {
             Chat chat = new ChatImpl(chatId,
                     chatConfig.getDisplayName(),
+                    audiences,
                     componentConverter.stringToComponent(chatConfig.getFormat()),
                     chatConfig.getMessageFormat(),
                     chatConfig.getSymbol(), null, chatConfig.getRange(), chatConfig.isPermissionRequired(),

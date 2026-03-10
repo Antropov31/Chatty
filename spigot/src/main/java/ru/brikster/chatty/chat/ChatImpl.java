@@ -31,6 +31,8 @@ public final class ChatImpl implements Chat {
     private final @NotNull String id;
     private final @Nullable String displayName;
 
+    private final @NotNull BukkitAudiences audiences;
+
     @Getter
     private final @NotNull Component format;
 
@@ -149,9 +151,7 @@ public final class ChatImpl implements Chat {
     }
 
     private void sendComponent(Plugin plugin, Component component, Predicate<CommandSender> recipientPredicate) {
-        @SuppressWarnings("resource")
-        var audience = BukkitAudiences
-                .create(plugin)
+        var audience = audiences
                 .filter(sender -> {
                     if (sender instanceof Player) {
                         boolean test = getRecipientPredicate(null).test((Player) sender);
