@@ -7,6 +7,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextReplacementConfig;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import ru.brikster.chatty.api.chat.message.context.MessageContext;
@@ -126,8 +127,11 @@ public class MentionsTransformStrategy implements MessageTransformStrategy<Compo
 
     private Pattern patternForPlayer(Player player) {
         try {
+            // Match against the plain (uncolored) display name: the message is
+            // compared as plain text, so a colored display name would never match.
+            String plainName = ChatColor.stripColor(player.getDisplayName());
             String patternString = settingsConfig.getMentions().getPattern()
-                    .replace("{username}", Pattern.quote(player.getDisplayName()));
+                    .replace("{username}", Pattern.quote(plainName));
             return playerPatternCache.get(player, () -> Pattern.compile(patternString));
         } catch (ExecutionException e) {
             throw new IllegalStateException("Cannot compile mention pattern", e);
