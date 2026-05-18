@@ -5,6 +5,7 @@ import com.google.common.cache.CacheBuilder;
 import net.kyori.adventure.platform.bukkit.BukkitAudiences;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextReplacementConfig;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -90,6 +91,11 @@ public class MentionsTransformStrategy implements MessageTransformStrategy<Compo
 
             mentionFormatComponent = placeholdersComponentTransformer.transform(mentionFormatComponent,
                     SinglePlayerTransformContext.of(onlinePlayer));
+
+            // Append a zero-width reset marker so the mention's color and
+            // decorations do not bleed into the text following the mention.
+            mentionFormatComponent = mentionFormatComponent
+                    .append(Component.text("\u200B", NamedTextColor.WHITE));
 
             Component updatedMessage = context.getMessage()
                     .replaceText(TextReplacementConfig.builder()
