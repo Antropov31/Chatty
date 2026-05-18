@@ -115,9 +115,12 @@ rm -rf "$SERVER/plugins/Chatty" "$SERVER"/plugins/Chatty_old_*
 FRESH_LOG="$WORK/fresh.log"
 run_server "$FRESH_LOG"
 assert_enabled "$FRESH_LOG"
-[ -f "$SERVER/plugins/Chatty/settings.yml" ] || fail "settings.yml was not generated"
-[ -f "$SERVER/plugins/Chatty/chats.yml" ]    || fail "chats.yml was not generated"
-echo "✓ plugin enables and generates config on a fresh install"
+[ -f "$SERVER/plugins/Chatty/settings.yml" ]     || fail "settings.yml was not generated"
+[ -f "$SERVER/plugins/Chatty/chats.yml" ]        || fail "chats.yml was not generated"
+[ -f "$SERVER/plugins/Chatty/lang/en-US.yml" ]   || fail "lang/en-US.yml was not generated"
+[ -f "$SERVER/plugins/Chatty/lang/ru-RU.yml" ]   || fail "bundled lang/ru-RU.yml was not copied"
+grep -q "Игрок" "$SERVER/plugins/Chatty/lang/ru-RU.yml" || fail "lang/ru-RU.yml has no Russian content"
+echo "✓ plugin enables and generates config (incl. lang files) on a fresh install"
 
 # --- scenario B: legacy v2 migration ---------------------------------------
 

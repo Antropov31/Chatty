@@ -30,12 +30,12 @@ public class SettingsConfig extends OkaeriConfig {
 
     @Comment(value = {
             "",
-            "Supported languages: en-US, ru-RU.",
+            "Supported languages: en-US, ru-RU, de-DE, es-ES, zh-CN.",
             "You can create own language file and put it into \"lang/<language>.yml\""
     }, language = "en-US")
     @Comment(value = {
             "",
-            "Поддерживаемые языки: en-us, ru-RU.",
+            "Поддерживаемые языки: en-US, ru-RU, de-DE, es-ES, zh-CN.",
             "Вы можете создать собственный языковой файл и положить его в папку \"lang/<language>.yml\""
     }, language = "ru-RU")
     private String language = "en-US";

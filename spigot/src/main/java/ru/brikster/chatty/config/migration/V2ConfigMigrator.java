@@ -69,7 +69,7 @@ public final class V2ConfigMigrator {
         notes.add("Sounds were not migrated (v2 used Bukkit sound names) — review *.yml.");
         notes.add("Interactive replacements (json.replacements) were not migrated — see replacements.yml.");
         notes.add("Notifications were not migrated — see notifications.yml.");
-        notes.add("Locale messages were not migrated — see messages.yml and lang/.");
+        notes.add("Locale messages were not migrated — see the lang/ folder.");
         notes.add("Cross-server chat now uses Redis — see proxy.yml (the v2 BungeeCord setting is not migrated).");
 
         logger.info("Legacy configuration migrated. Please review the following:");
