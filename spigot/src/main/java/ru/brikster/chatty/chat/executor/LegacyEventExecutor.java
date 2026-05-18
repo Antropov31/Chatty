@@ -34,6 +34,8 @@ import ru.brikster.chatty.util.EventUtil;
 import javax.inject.Inject;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -44,6 +46,10 @@ import java.util.stream.Collectors;
 public final class LegacyEventExecutor implements Listener, EventExecutor {
 
     private final Map<Integer, MessageContext<String>> pendingMessages = new ConcurrentHashMap<>();
+
+    private static final long ERROR_LOG_INTERVAL_MILLIS = 10_000L;
+    private final AtomicLong lastErrorLogTime = new AtomicLong(0L);
+    private final AtomicInteger suppressedErrors = new AtomicInteger(0);
 
     @Inject private ChatSelector selector;
     @Inject private ComponentFromContextConstructor componentFromContextConstructor;
@@ -91,12 +97,32 @@ public final class LegacyEventExecutor implements Listener, EventExecutor {
 
             processed = true;
         } catch (Throwable t) {
-            logger.log(Level.SEVERE, "Cannot handle chat event", t);
+            handleProcessingFailure(t, event.getPlayer());
         } finally {
             if (!processed) {
                 event.setCancelled(true);
             }
         }
+    }
+
+    /**
+     * Logs a chat-processing failure (rate-limited so a single recurring fault
+     * cannot flood the console) and notifies the affected player.
+     */
+    private void handleProcessingFailure(Throwable t, Player player) {
+        long now = System.currentTimeMillis();
+        long last = lastErrorLogTime.get();
+        if (now - last >= ERROR_LOG_INTERVAL_MILLIS && lastErrorLogTime.compareAndSet(last, now)) {
+            int suppressed = suppressedErrors.getAndSet(0);
+            String message = suppressed > 0
+                    ? "Cannot handle chat event (" + suppressed + " similar error(s) suppressed in the last "
+                            + (ERROR_LOG_INTERVAL_MILLIS / 1000) + "s)"
+                    : "Cannot handle chat event";
+            logger.log(Level.SEVERE, message, t);
+        } else {
+            suppressedErrors.incrementAndGet();
+        }
+        audiences.player(player).sendMessage(messages.getChatErrorOccurred());
     }
 
     private MessageContext<String> createEarlyContext(AsyncPlayerChatEvent event) {
@@ -243,7 +269,7 @@ public final class LegacyEventExecutor implements Listener, EventExecutor {
 
             processed = true;
         } catch (Throwable t) {
-            logger.log(Level.SEVERE, "Cannot handle chat event", t);
+            handleProcessingFailure(t, event.getPlayer());
         } finally {
             if (!processed) {
                 event.setCancelled(true);

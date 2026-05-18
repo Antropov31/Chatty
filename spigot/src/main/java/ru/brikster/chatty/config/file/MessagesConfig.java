@@ -25,6 +25,7 @@ public class MessagesConfig extends OkaeriConfig {
     private Component chatNotFound = MINI_MESSAGE.deserialize("<red>No matching chat found. Maybe you don't have enough permissions?");
     private Component nobodyHeard = MINI_MESSAGE.deserialize("<red>Nobody heard you.");
     private Component waitCooldown = MINI_MESSAGE.deserialize("<red>Wait {secondsLeft} sec. before next message.");
+    private Component chatErrorOccurred = MINI_MESSAGE.deserialize("<red>An error occurred while processing your message. Please contact the server administrator.");
 
     // Moderation methods
     @Comment({"", "Messages for moderation"})
