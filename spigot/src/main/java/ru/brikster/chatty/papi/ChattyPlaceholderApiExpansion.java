@@ -4,15 +4,16 @@ import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import me.clip.placeholderapi.expansion.Relational;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
+import ru.brikster.chatty.repository.player.PlayerDataRepository;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.regex.Pattern;
 
 @Singleton
 public class ChattyPlaceholderApiExpansion extends PlaceholderExpansion implements Relational {
 
     @Inject private Plugin plugin;
+    @Inject private PlayerDataRepository playerDataRepository;
 
     @Override
     public String getIdentifier() {
@@ -31,17 +32,13 @@ public class ChattyPlaceholderApiExpansion extends PlaceholderExpansion implemen
 
     @Override
     public String onPlaceholderRequest(Player one, Player two, String params) {
-        // TODO finish placeholders
-        String[] args = params.split(Pattern.quote("_"));
-        if (args.length == 0) {
+        if (one == null || two == null) {
             return null;
         }
-        switch (args[0]) {
-            case "ignore": {
-                if (args.length != 1) {
-                    return null;
-                }
-            }
+        // %rel_chatty_ignore% - whether the first player ignores the second one
+        if (params.equalsIgnoreCase("ignore")) {
+            return Boolean.toString(playerDataRepository
+                    .isIgnoredPlayer(one.getUniqueId(), two.getUniqueId()));
         }
         return null;
     }
