@@ -53,6 +53,9 @@ public final class ReplacementsComponentTransformer implements PlaceholdersCompo
         String replacementKey = matchedString.substring(3, matchedString.length() - 1);
         if (cycledReplacements.contains(replacementKey)) return null;
         String replacementText = replacementsConfig.getReplacements().get(replacementKey);
+        // Unknown key: leave the placeholder untouched instead of passing null
+        // down the transformer chain (which would throw and fail the whole message).
+        if (replacementText == null) return null;
         return replacementsStringTransformer.transform(context.getPlayer(), replacementText);
     }
 
