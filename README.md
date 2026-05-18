@@ -6,9 +6,13 @@
 [![JitPack](https://jitpack.io/v/Brikster/Chatty.svg)](https://jitpack.io/#Brikster/Chatty)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/815bf25f21da4c81b9e26bd1159df072)](https://www.codacy.com/gh/Brikster/Chatty/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=Brikster/Chatty&amp;utm_campaign=Badge_Grade)
 
-> Latest release of Chatty (v2.*) is deprecated and won't be updated. 
-> Currently we're developing **Chatty v3**, and it is **WORK IN PROGRESS**. Current branch contains a code of it. 
-> You can download latest build in "Actions" (see "Artifacts" section).
+> **Chatty v3** is a ground-up rewrite built on Kyori's Adventure library. It is
+> approaching its first stable release (`3.0.0`); this branch holds its code.
+>
+> - **Stable builds** — the [Releases](https://github.com/Brikster/Chatty/releases) page (once `3.0.0` is tagged).
+> - **Development builds** — the latest artifact from the "Actions" tab (see the "Artifacts" section).
+>
+> Chatty v2.* is deprecated and no longer maintained.
 
 Chatty is the modern chat management system for Bukkit-compatible servers. It's based on-top of Kyori's Adventure library, 
 that makes it so powerful and stable.

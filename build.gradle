@@ -4,7 +4,8 @@ plugins {
 
 allprojects {
     group = 'ru.brikster'
-    version = '3.0.0-SNAPSHOT'
+    // Overridable from the release workflow: -PchattyVersion=3.0.0
+    version = providers.gradleProperty('chattyVersion').getOrElse('3.0.0-SNAPSHOT')
 }
 
 subprojects {
