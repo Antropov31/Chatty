@@ -14,23 +14,27 @@ public interface MessageTransformStrategy<MessageT> {
 
     @NotNull Stage getStage();
 
-    // TODO revert to allowed actions
+    /**
+     * Actions a strategy is permitted to perform at a given {@link Stage}.
+     * This is an allow-list: an action not listed for a stage is forbidden,
+     * so newly added actions are denied by default until explicitly allowed.
+     */
     enum TransformRule {
-        DENY_CANCEL,
-        DENY_FORMAT_UPDATE,
-        DENY_UPDATE_RECIPIENTS
+        ALLOW_CANCEL,
+        ALLOW_FORMAT_UPDATE,
+        ALLOW_UPDATE_RECIPIENTS
     }
 
     @Getter
     enum Stage {
         // Ungrouped stage with string message
-        EARLY(String.class, DENY_FORMAT_UPDATE),
+        EARLY(String.class, ALLOW_CANCEL, ALLOW_UPDATE_RECIPIENTS),
         // Ungrouped stage with component message
-        MIDDLE(Component.class, DENY_CANCEL, DENY_FORMAT_UPDATE),
+        MIDDLE(Component.class, ALLOW_UPDATE_RECIPIENTS),
         // Grouped stage with component message
-        LATE(Component.class, DENY_CANCEL, DENY_UPDATE_RECIPIENTS),
+        LATE(Component.class, ALLOW_FORMAT_UPDATE),
         // Personal stage with component message
-        POST(Component.class, DENY_CANCEL, DENY_UPDATE_RECIPIENTS);
+        POST(Component.class, ALLOW_FORMAT_UPDATE);
 
         private final Class<?> messageType;
         private final TransformRule[] rules;
@@ -40,7 +44,7 @@ public interface MessageTransformStrategy<MessageT> {
             this.rules = rules;
         }
 
-        public boolean hasRule(TransformRule rule) {
+        public boolean allows(TransformRule rule) {
             for (TransformRule transformRule : rules) {
                 if (transformRule == rule) return true;
             }

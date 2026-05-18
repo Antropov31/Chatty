@@ -51,16 +51,16 @@ public final class MessageTransformStrategiesProcessorImpl implements MessageTra
             addedRecipients.addAll(messageTransformResult.getAddedRecipients());
         }
 
-        if (becameCancelled && stage.hasRule(TransformRule.DENY_CANCEL)) {
+        if (becameCancelled && !stage.allows(TransformRule.ALLOW_CANCEL)) {
             throw new IllegalStateException("Strategy at stage " + stage + " cannot cancel message");
         }
 
-        if (formatUpdated && stage.hasRule(TransformRule.DENY_FORMAT_UPDATE)) {
+        if (formatUpdated && !stage.allows(TransformRule.ALLOW_FORMAT_UPDATE)) {
             throw new IllegalStateException("Strategy at stage " + stage + " cannot update format");
         }
 
         if ((!removedRecipients.isEmpty() || !addedRecipients.isEmpty())
-                && stage.hasRule(TransformRule.DENY_UPDATE_RECIPIENTS)) {
+                && !stage.allows(TransformRule.ALLOW_UPDATE_RECIPIENTS)) {
             throw new IllegalStateException("Strategy at stage " + stage + " cannot update recipients");
         }
 
