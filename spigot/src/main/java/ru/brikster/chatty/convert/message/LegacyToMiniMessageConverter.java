@@ -15,6 +15,11 @@ public final class LegacyToMiniMessageConverter implements MessageConverter {
     private static final Pattern SPIGOT_HEX_COLOR_PATTERN = Pattern.compile("(?i)[§&]X([§&][A-F\\d]){6}");
     private static final Pattern PAPER_HEX_COLOR_PATTERN = Pattern.compile("(?i)[§&]#([A-F\\d]){6}");
 
+    // Section-sign-only variants, used for text coming from other plugins
+    private static final Pattern SECTION_BUKKIT_COLOR_PATTERN = Pattern.compile("(?i)§[A-FK-OR\\d]");
+    private static final Pattern SECTION_SPIGOT_HEX_COLOR_PATTERN = Pattern.compile("(?i)§X(§[A-F\\d]){6}");
+    private static final Pattern SECTION_PAPER_HEX_COLOR_PATTERN = Pattern.compile("(?i)§#([A-F\\d]){6}");
+
     private static final Pattern CHATTY_HEX_COLOR_PATTERN = Pattern.compile("(?i)\\{#([A-F\\d]{6})}");
     private static final Pattern CHATTY_HEX_GRADIENT_PATTERN = Pattern.compile("(?i)\\{#([A-F\\d]{6})(:#([A-F\\d]{6}))+( )([^{}])*(})");
 
@@ -54,14 +59,29 @@ public final class LegacyToMiniMessageConverter implements MessageConverter {
         String convertedMessage;
         convertedMessage = convertChattyCodes(message);
         convertedMessage = convertChattyHexCodes(convertedMessage);
-        convertedMessage = convertPaperHexCodes(convertedMessage);
-        convertedMessage = convertSpigotHexCodes(convertedMessage);
-        convertedMessage = convertBukkitCodes(convertedMessage);
+        convertedMessage = convertPaperHexCodes(convertedMessage, PAPER_HEX_COLOR_PATTERN);
+        convertedMessage = convertSpigotHexCodes(convertedMessage, SPIGOT_HEX_COLOR_PATTERN);
+        convertedMessage = convertBukkitCodes(convertedMessage, BUKKIT_COLOR_PATTERN);
         return convertedMessage;
     }
 
-    private @NotNull String convertPaperHexCodes(@NotNull String message) {
-        Matcher matcher = PAPER_HEX_COLOR_PATTERN.matcher(message);
+    /**
+     * Converts only § (section sign) legacy codes, leaving &amp; codes and Chatty
+     * {#...} codes untouched. Used for text that originates from other plugins:
+     * Bukkit strips § from real player chat input, so any § reaching Chatty is
+     * always foreign legacy formatting and is safe to convert. & codes are skipped
+     * on purpose — they are gated behind the chatty.decoration permission.
+     */
+    public @NotNull String convertSectionCodes(@NotNull String message) {
+        String convertedMessage;
+        convertedMessage = convertPaperHexCodes(message, SECTION_PAPER_HEX_COLOR_PATTERN);
+        convertedMessage = convertSpigotHexCodes(convertedMessage, SECTION_SPIGOT_HEX_COLOR_PATTERN);
+        convertedMessage = convertBukkitCodes(convertedMessage, SECTION_BUKKIT_COLOR_PATTERN);
+        return convertedMessage;
+    }
+
+    private @NotNull String convertPaperHexCodes(@NotNull String message, @NotNull Pattern pattern) {
+        Matcher matcher = pattern.matcher(message);
 
         StringBuilder builder = new StringBuilder();
         while (matcher.find()) {
@@ -101,8 +121,8 @@ public final class LegacyToMiniMessageConverter implements MessageConverter {
         return builder.toString();
     }
 
-    private @NotNull String convertSpigotHexCodes(@NotNull String message) {
-        Matcher matcher = SPIGOT_HEX_COLOR_PATTERN.matcher(message);
+    private @NotNull String convertSpigotHexCodes(@NotNull String message, @NotNull Pattern pattern) {
+        Matcher matcher = pattern.matcher(message);
 
         StringBuilder builder = new StringBuilder();
         while (matcher.find()) {
@@ -114,13 +134,13 @@ public final class LegacyToMiniMessageConverter implements MessageConverter {
         return builder.toString();
     }
 
-    private @NotNull String convertBukkitCodes(@NotNull String message) {
-        Matcher matcher = BUKKIT_COLOR_PATTERN.matcher(message);
+    private @NotNull String convertBukkitCodes(@NotNull String message, @NotNull Pattern pattern) {
+        Matcher matcher = pattern.matcher(message);
 
         StringBuilder builder = new StringBuilder();
         while (matcher.find()) {
             String group = matcher.group();
-            String replacement = legacyCodeToMiniMessageMap.get(group.charAt(1));
+            String replacement = legacyCodeToMiniMessageMap.get(Character.toLowerCase(group.charAt(1)));
             matcher.appendReplacement(builder, replacement);
         }
         matcher.appendTail(builder);

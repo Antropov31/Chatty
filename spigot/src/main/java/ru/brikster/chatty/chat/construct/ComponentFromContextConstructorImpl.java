@@ -30,8 +30,11 @@ public final class ComponentFromContextConstructorImpl implements ComponentFromC
     public Component construct(MessageContext<Component> context) {
         String messageWithMmFormat = componentStringConverter.componentToString(context.getMessage());
         String convertedMessageFormat = legacyToMiniMessageConverter.convert(context.getMessageFormat());
-        String formattedMessage = convertedMessageFormat
-                .replace("{original-message}", messageWithMmFormat);
+        // Convert any § legacy codes injected by other plugins (e.g. InteractiveChat
+        // hover commands) to MiniMessage tags, otherwise the strict MiniMessage
+        // deserializer below would throw on detecting legacy formatting codes.
+        String formattedMessage = legacyToMiniMessageConverter.convertSectionCodes(convertedMessageFormat
+                .replace("{original-message}", messageWithMmFormat));
         Component formattedMessageComponent = MiniMessage.miniMessage().deserialize(formattedMessage);
 
         return AdventureUtil.replaceWithEndingSpace(context.getFormat(),
