@@ -1,0 +1,37 @@
+name: Smoke test
+
+on: [ push, workflow_dispatch ]
+
+jobs:
+  smoke-test:
+    if: "! contains(toJSON(github.event.commits.*.message), '[SKIP-CI]')"
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@main
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v2
+        with:
+          gradle-version: 8.8
+
+      - name: Build plugin
+        run: gradle build
+
+      - name: Boot a Paper server and verify startup + v2 migration
+        run: bash scripts/smoke-test.sh
+
+      - name: Upload server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@main
+        with:
+          name: smoke-test-logs
+          path: build/smoke-test/
+          if-no-files-found: ignore

@@ -39,3 +39,22 @@ cd Chatty/
 ```
 
 Output jar will be placed into `/build/libs` directory.
+
+## Testing
+
+Run the unit tests:
+
+```shell script
+./gradlew test
+```
+
+Run the end-to-end smoke test — it boots a real Paper server with the built
+plugin and verifies that it enables cleanly on a fresh install and correctly
+migrates a legacy v2 configuration:
+
+```shell script
+./gradlew build
+JAVA_HOME=/path/to/jdk-21 bash scripts/smoke-test.sh
+```
+
+Both run automatically on every push via GitHub Actions.

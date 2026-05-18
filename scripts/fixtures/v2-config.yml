@@ -1,0 +1,87 @@
+# Legacy Chatty v2 configuration used as a fixture by scripts/smoke-test.sh.
+# Distinctive markers (MIGRATED_MARKER, IP_PATTERN_X, ...) let the smoke test
+# assert that values actually made it into the migrated v3 files.
+config-version: '2.0'
+
+general:
+  locale: en
+  priority: highest
+  log: true
+  keep-old-recipients: false
+  hide-vanished-recipients: true
+
+chats:
+  local:
+    enable: true
+    display-name: 'Local'
+    format: '&e[MIGRATED_MARKER] &r{prefix}{player}{suffix}&8: &f{message}'
+    range: 100
+    cooldown: 5
+    command: 'localchat'
+    aliases: [ 'lchat' ]
+
+  global:
+    enable: true
+    format: '&a[Global] {player}: {message}'
+    range: -3
+    symbol: '!'
+    cooldown: -1
+
+  disabled_chat:
+    enable: false
+    format: '&cShould not be migrated'
+    range: -1
+
+spy:
+  enable: true
+  format:
+    chat: '&6[Spy] &r{format}'
+    pm: '&6[Spy] &r{format}'
+
+pm:
+  enable: true
+  allow-console: true
+  format:
+    recipient: '&7{sender-name} &6-> &7{recipient-name}: &f{message}'
+    sender: '&7{sender-name} &6-> &7{recipient-name}: &f{message}'
+
+json:
+  enable: false
+  mentions:
+    enable: true
+    format: '&e&l@{player}'
+
+moderation:
+  caps:
+    enable: false
+    length: 8
+    percent: 75
+    block: false
+  advertisement:
+    enable: true
+    patterns:
+      ip: 'IP_PATTERN_X'
+      web: 'WEB_PATTERN_X'
+    block: true
+    replacement: '<ad>'
+    whitelist:
+      - 'example.org'
+  swear:
+    enable: true
+    block: true
+    replacement: '[censored]'
+
+miscellaneous:
+  vanilla:
+    join:
+      enable: true
+      message: '&aWELCOME {player}'
+      permission: true
+      first-join:
+        message: '&aFIRST_JOIN {player}'
+    quit:
+      enable: true
+      message: '&cBYE {player}'
+    death:
+      enable: true
+      message: '&c{player} is gone'
