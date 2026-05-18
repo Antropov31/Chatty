@@ -44,6 +44,7 @@ import ru.brikster.chatty.command.handler.SpyCommandHandler;
 import ru.brikster.chatty.config.file.MessagesConfig;
 import ru.brikster.chatty.config.file.PmConfig;
 import ru.brikster.chatty.config.file.SettingsConfig;
+import ru.brikster.chatty.config.migration.V2ConfigMigrator;
 import ru.brikster.chatty.guice.ConfigsLoader;
 import ru.brikster.chatty.guice.GeneralGuiceModule;
 import ru.brikster.chatty.metrics.MetricsSender;
@@ -86,13 +87,32 @@ public final class Chatty extends JavaPlugin {
     @Override
     public void onEnable() {
         Path dataFolderPath = Chatty.this.getDataFolder().toPath();
+
+        Map<String, Object> legacyConfig = null;
         if (Files.exists(dataFolderPath.resolve("config.yml"))) {
             String backupFolderName = "Chatty_old_" + System.currentTimeMillis();
-            Files.move(dataFolderPath, dataFolderPath.resolveSibling(backupFolderName));
+            Path backupFolder = dataFolderPath.resolveSibling(backupFolderName);
+            Files.move(dataFolderPath, backupFolder);
             getLogger().log(Level.WARNING, "Found legacy \"config.yml\" file in plugin directory. \"Chatty\" folder was renamed to \"{0}\".", backupFolderName);
+            legacyConfig = V2ConfigMigrator.readLegacyConfig(backupFolder.resolve("config.yml"));
+            if (legacyConfig == null) {
+                getLogger().warning("Could not read the legacy config.yml — starting with a default configuration.");
+            }
         }
 
         initialize();
+
+        if (legacyConfig != null) {
+            try {
+                // Generate fresh v3 defaults above, overwrite the migrated keys, then reload.
+                new V2ConfigMigrator(getLogger()).migrate(legacyConfig, dataFolderPath);
+                closeResources();
+                initialize();
+            } catch (Throwable t) {
+                getLogger().log(Level.SEVERE, "Failed to migrate legacy configuration — using defaults", t);
+            }
+        }
+
         registerChattyCommand();
     }
 

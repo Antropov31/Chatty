@@ -13,6 +13,7 @@
 > - **Development builds** — the latest artifact from the "Actions" tab (see the "Artifacts" section).
 >
 > Chatty v2.* is deprecated and no longer maintained.
+> Upgrading from v2? See [MIGRATION.md](MIGRATION.md) — v3 migrates your old config automatically.
 
 Chatty is the modern chat management system for Bukkit-compatible servers. It's based on-top of Kyori's Adventure library, 
 that makes it so powerful and stable.
