@@ -59,7 +59,15 @@ public class MentionsTransformStrategy implements MessageTransformStrategy<Compo
         Component message = context.getMessage();
         String plainTextMessage = plainTextComponentSerializer.serialize(message);
 
-        // TODO optimize
+        // Fast path: this strategy runs once per recipient and scans every
+        // recipient, so skip the whole O(n^2) scan when the message obviously
+        // mentions nobody. The default pattern requires a literal '@'; when it
+        // does and the message has none, no mention is possible.
+        String mentionPattern = settingsConfig.getMentions().getPattern();
+        if (mentionPattern.indexOf('@') >= 0 && plainTextMessage.indexOf('@') < 0) {
+            return MessageTransformResultBuilder.<Component>fromContext(context).build();
+        }
+
         //noinspection unchecked
         for (Player onlinePlayer : ((Collection<? extends Player>) context.getMetadata().get("all_recipients"))) {
             // Cannot mention yourself
