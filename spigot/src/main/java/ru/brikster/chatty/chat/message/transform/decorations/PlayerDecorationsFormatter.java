@@ -52,6 +52,11 @@ public final class PlayerDecorationsFormatter {
             .build();
 
     public @NotNull Component formatMessageWithDecorations(@NotNull CommandSender sender, @NotNull String message) {
+        // Chatty's decoration system is &-based; the § (section) sign is never
+        // legitimate player input (the server rejects it in chat). Strip it so
+        // it can never be interpreted as a color code further down the pipeline.
+        message = message.replace("\u00A7", "");
+
         if (sender.hasPermission("chatty.decoration")) {
             return FULL_SERIALIZER.deserialize(message);
         }

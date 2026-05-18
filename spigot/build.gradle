@@ -84,6 +84,9 @@ dependencies {
     compileOnly 'me.clip:placeholderapi:2.11.6'
     compileOnly 'net.luckperms:api:5.4'
     compileOnly 'commons-io:commons-io:2.11.0'
+
+    testImplementation 'org.spigotmc:spigot-api:1.19-R0.1-SNAPSHOT'
+    testImplementation 'org.mockito:mockito-core:5.14.2'
 }
 
 def templateSource = file('src/main/templates')
