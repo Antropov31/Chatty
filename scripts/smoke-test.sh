@@ -297,11 +297,15 @@ if [ "$CHAT_TEST" -eq 1 ] && ensure_legacy_java; then
     rm -rf "$LEGACY_SERVER"
     mkdir -p "$LEGACY_SERVER/plugins"
     echo "eula=true" > "$LEGACY_SERVER/eula.txt"
+    # use-native-transport=false forces the NIO transport: the ancient Netty
+    # epoll bundled with 1.8.8 crashes ("Unable to access address of buffer")
+    # on modern Linux kernels, e.g. CI runners.
     cat > "$LEGACY_SERVER/server.properties" <<'EOF'
 online-mode=false
 level-type=flat
 spawn-protection=0
 max-players=10
+use-native-transport=false
 EOF
     cp "$JAR" "$LEGACY_SERVER/plugins/Chatty.jar"
     cat > "$LEGACY_SERVER/ops.json" <<EOF
