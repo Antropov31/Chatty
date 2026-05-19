@@ -2,14 +2,18 @@
 #
 # End-to-end smoke test for Chatty.
 #
-# Boots a real Paper server with the built plugin and verifies:
+# Boots real Minecraft servers with the built plugin and verifies:
 #   A. fresh install       -> the plugin enables, generates configs, and
 #                             processes real in-game chat (two bots) cleanly
 #   B. legacy v2 migration -> a v2 config.yml is migrated into v3 files
+#   C. legacy server       -> the plugin enables and processes chat on an old
+#                             server (1.8.8), exercising the bundled Adventure
+#                             path and the isolated SQLite driver
 #
 # Requirements: bash, curl, python3, and a JDK 21 (point JAVA_HOME at it).
-# The in-game chat test additionally needs node + npm; without them it is
-# skipped (the rest of the smoke test still runs).
+# The in-game chat test additionally needs node + npm; without them it (and
+# scenario C) is skipped. Scenario C also needs a Java 11 runtime for the old
+# server — it is downloaded automatically when not supplied via LEGACY_JAVA_HOME.
 #
 # Build the plugin first (./gradlew build); the workflow does this for CI.
 #
@@ -18,11 +22,15 @@
 set -euo pipefail
 
 MC_VERSION="${MC_VERSION:-1.21.4}"
+LEGACY_MC_VERSION="${LEGACY_MC_VERSION:-1.8.8}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Kept under build/ (git-ignored) so logs survive for inspection / CI artifacts.
 WORK="$ROOT/build/smoke-test"
 BOT_TOOLS="$ROOT/build/bot-tools"   # cached node_modules for the chat test
+JDK_TOOLS="$ROOT/build/jdk-tools"   # cached Java 11 runtime for the legacy server
 SERVER="$WORK/server"
+LEGACY_SERVER="$WORK/legacy-server"
+LEGACY_JAVA_BIN=""
 SERVER_PID=""
 HOLDER_PID=""
 
@@ -40,6 +48,39 @@ mkdir -p "$WORK"
 
 step() { printf '\n\033[1m=== %s ===\033[0m\n' "$1"; }
 fail() { printf '\n\033[31m✗ SMOKE TEST FAILED: %s\033[0m\n' "$*" >&2; exit 1; }
+
+# Downloads the latest Paper build for a version.  $1 = version, $2 = output jar.
+download_paper() {
+    local version="$1" out="$2" build
+    build="$(curl -fsSL "https://api.papermc.io/v2/projects/paper/versions/$version" \
+        | python3 -c 'import sys, json; print(json.load(sys.stdin)["builds"][-1])')"
+    curl -fsSL -o "$out" \
+        "https://api.papermc.io/v2/projects/paper/versions/$version/builds/$build/downloads/paper-$version-$build.jar"
+    echo "Paper $version build $build"
+}
+
+# Locates a Java 11 runtime for the legacy server — modern JDKs cannot run it.
+# Uses $LEGACY_JAVA_HOME when set, otherwise downloads a Temurin JRE 11 under
+# build/. Sets LEGACY_JAVA_BIN; returns non-zero when none can be obtained.
+ensure_legacy_java() {
+    if [ -n "${LEGACY_JAVA_HOME:-}" ] && [ -x "$LEGACY_JAVA_HOME/bin/java" ]; then
+        LEGACY_JAVA_BIN="$LEGACY_JAVA_HOME/bin/java"
+        return 0
+    fi
+    local os arch
+    case "$(uname -s)" in Darwin) os=mac;; Linux) os=linux;; *) return 1;; esac
+    case "$(uname -m)" in arm64 | aarch64) arch=aarch64;; x86_64 | amd64) arch=x64;; *) return 1;; esac
+    local dir="$JDK_TOOLS/temurin-jre-11-$os-$arch"
+    LEGACY_JAVA_BIN="$(find "$dir" -name java -path '*/bin/*' 2>/dev/null | head -1)"
+    if [ -z "$LEGACY_JAVA_BIN" ]; then
+        step "Downloading Temurin JRE 11 (to run the legacy $LEGACY_MC_VERSION server)"
+        mkdir -p "$dir"
+        curl -fsSL "https://api.adoptium.net/v3/binary/latest/11/ga/$os/$arch/jre/hotspot/normal/eclipse" \
+            | tar -xz -C "$dir" --strip-components=1 || return 1
+        LEGACY_JAVA_BIN="$(find "$dir" -name java -path '*/bin/*' 2>/dev/null | head -1)"
+    fi
+    [ -n "$LEGACY_JAVA_BIN" ] && [ -x "$LEGACY_JAVA_BIN" ]
+}
 
 # --- locate the plugin jar -------------------------------------------------
 
@@ -75,12 +116,8 @@ fi
 # --- download Paper --------------------------------------------------------
 
 step "Downloading Paper $MC_VERSION"
-BUILD="$(curl -fsSL "https://api.papermc.io/v2/projects/paper/versions/$MC_VERSION" \
-    | python3 -c 'import sys, json; print(json.load(sys.stdin)["builds"][-1])')"
 PAPER_JAR="$WORK/paper.jar"
-curl -fsSL -o "$PAPER_JAR" \
-    "https://api.papermc.io/v2/projects/paper/versions/$MC_VERSION/builds/$BUILD/downloads/paper-$MC_VERSION-$BUILD.jar"
-echo "Paper $MC_VERSION build $BUILD"
+download_paper "$MC_VERSION" "$PAPER_JAR"
 
 # --- server scaffolding ----------------------------------------------------
 
@@ -249,5 +286,44 @@ stop_server
 
 echo
 grep -E "\[Chatty\].*(Migrat|migrat|review|-)" "$MIGRATE_LOG" || true
+
+# --- scenario C: legacy server ---------------------------------------------
+
+step "Scenario C — legacy server ($LEGACY_MC_VERSION)"
+if [ "$CHAT_TEST" -eq 1 ] && ensure_legacy_java; then
+    "$LEGACY_JAVA_BIN" -version 2>&1 | head -1
+    download_paper "$LEGACY_MC_VERSION" "$WORK/paper-legacy.jar"
+
+    rm -rf "$LEGACY_SERVER"
+    mkdir -p "$LEGACY_SERVER/plugins"
+    echo "eula=true" > "$LEGACY_SERVER/eula.txt"
+    cat > "$LEGACY_SERVER/server.properties" <<'EOF'
+online-mode=false
+level-type=flat
+spawn-protection=0
+max-players=10
+EOF
+    cp "$JAR" "$LEGACY_SERVER/plugins/Chatty.jar"
+    cat > "$LEGACY_SERVER/ops.json" <<EOF
+[
+  {"uuid":"$(offline_uuid SmokeSender)","name":"SmokeSender","level":4,"bypassesPlayerLimit":false},
+  {"uuid":"$(offline_uuid SmokeTarget)","name":"SmokeTarget","level":4,"bypassesPlayerLimit":false}
+]
+EOF
+
+    # The legacy server runs on its own (older) Java and Paper jar; start_server
+    # and stop_server act on these globals.
+    SERVER="$LEGACY_SERVER"
+    PAPER_JAR="$WORK/paper-legacy.jar"
+    JAVA_BIN="$LEGACY_JAVA_BIN"
+    LEGACY_LOG="$WORK/legacy.log"
+    start_server "$LEGACY_LOG"
+    assert_enabled "$LEGACY_LOG"
+    echo "✓ plugin enables on a legacy $LEGACY_MC_VERSION server (bundled Adventure + isolated SQLite driver)"
+    run_chat_test "$LEGACY_LOG"
+    stop_server
+else
+    echo "• legacy-server scenario skipped (node or a Java 11 runtime unavailable)"
+fi
 
 printf '\n\033[32m✓ SMOKE TEST PASSED\033[0m\n'
