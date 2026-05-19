@@ -77,7 +77,9 @@ public final class LegacyToMiniMessageConverter implements MessageConverter {
         convertedMessage = convertPaperHexCodes(message, SECTION_PAPER_HEX_COLOR_PATTERN);
         convertedMessage = convertSpigotHexCodes(convertedMessage, SECTION_SPIGOT_HEX_COLOR_PATTERN);
         convertedMessage = convertBukkitCodes(convertedMessage, SECTION_BUKKIT_COLOR_PATTERN);
-        return convertedMessage;
+        // Drop any stray § that is not part of a recognised code, so the result
+        // is always safe to hand to a strict MiniMessage parser.
+        return convertedMessage.replace("§", "");
     }
 
     private @NotNull String convertPaperHexCodes(@NotNull String message, @NotNull Pattern pattern) {
