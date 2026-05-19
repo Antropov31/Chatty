@@ -2,11 +2,15 @@
 #
 # End-to-end smoke test for Chatty.
 #
-# Boots a real Paper server with the built plugin and verifies two scenarios:
-#   A. fresh install        -> the plugin enables and generates v3 configs
-#   B. legacy v2 migration  -> a v2 config.yml is migrated into v3 files
+# Boots a real Paper server with the built plugin and verifies:
+#   A. fresh install       -> the plugin enables, generates configs, and
+#                             processes real in-game chat (two bots) cleanly
+#   B. legacy v2 migration -> a v2 config.yml is migrated into v3 files
 #
 # Requirements: bash, curl, python3, and a JDK 21 (point JAVA_HOME at it).
+# The in-game chat test additionally needs node + npm; without them it is
+# skipped (the rest of the smoke test still runs).
+#
 # Build the plugin first (./gradlew build); the workflow does this for CI.
 #
 # Usage:  JAVA_HOME=/path/to/jdk-21 bash scripts/smoke-test.sh
@@ -17,6 +21,7 @@ MC_VERSION="${MC_VERSION:-1.21.4}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Kept under build/ (git-ignored) so logs survive for inspection / CI artifacts.
 WORK="$ROOT/build/smoke-test"
+BOT_TOOLS="$ROOT/build/bot-tools"   # cached node_modules for the chat test
 SERVER="$WORK/server"
 SERVER_PID=""
 HOLDER_PID=""
@@ -43,6 +48,30 @@ JAR="$(ls -t "$ROOT"/build/libs/Chatty-*.jar 2>/dev/null | head -1 || true)"
 echo "Plugin jar: $JAR"
 "$JAVA_BIN" -version 2>&1 | head -1
 
+# The in-game chat test needs Node.js. Use the system one, or fetch a local
+# copy under build/ so the test runs anywhere without a system install.
+CHAT_TEST=1
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+    node_os=""; node_arch=""
+    case "$(uname -s)" in Darwin) node_os=darwin;; Linux) node_os=linux;; esac
+    case "$(uname -m)" in arm64 | aarch64) node_arch=arm64;; x86_64 | amd64) node_arch=x64;; esac
+    if [ -n "$node_os" ] && [ -n "$node_arch" ]; then
+        NODE_VERSION=20.18.1
+        NODE_DIR="$BOT_TOOLS/node-v$NODE_VERSION-$node_os-$node_arch"
+        if [ ! -x "$NODE_DIR/bin/node" ]; then
+            step "Downloading Node.js $NODE_VERSION (for the in-game chat test)"
+            mkdir -p "$BOT_TOOLS"
+            curl -fsSL "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-$node_os-$node_arch.tar.gz" \
+                | tar -xz -C "$BOT_TOOLS"
+        fi
+        export PATH="$NODE_DIR/bin:$PATH"
+    fi
+fi
+if ! command -v node >/dev/null 2>&1; then
+    CHAT_TEST=0
+    echo "Node.js unavailable — the in-game chat test will be skipped"
+fi
+
 # --- download Paper --------------------------------------------------------
 
 step "Downloading Paper $MC_VERSION"
@@ -61,17 +90,37 @@ cat > "$SERVER/server.properties" <<'EOF'
 online-mode=false
 level-type=flat
 spawn-protection=0
-max-players=1
+max-players=10
 EOF
 cp "$JAR" "$SERVER/plugins/Chatty.jar"
 
-# Boots the server, waits for full startup, stops it cleanly.
+# Computes the offline-mode UUID of a username (UUID.nameUUIDFromBytes).
+offline_uuid() {
+    node -e 'const c=require("crypto");const h=c.createHash("md5").update("OfflinePlayer:"+process.argv[1]).digest();h[6]=(h[6]&0x0f)|0x30;h[8]=(h[8]&0x3f)|0x80;const x=h.toString("hex");console.log(`${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`);' "$1"
+}
+
+if [ "$CHAT_TEST" -eq 1 ]; then
+    # OP the test bots so they have chatty.* permissions (mentions etc.).
+    cat > "$SERVER/ops.json" <<EOF
+[
+  {"uuid":"$(offline_uuid SmokeSender)","name":"SmokeSender","level":4,"bypassesPlayerLimit":false},
+  {"uuid":"$(offline_uuid SmokeTarget)","name":"SmokeTarget","level":4,"bypassesPlayerLimit":false}
+]
+EOF
+    if [ ! -d "$BOT_TOOLS/node_modules/mineflayer" ]; then
+        step "Installing mineflayer (for the chat test)"
+        mkdir -p "$BOT_TOOLS"
+        (cd "$BOT_TOOLS" && npm install --no-fund --no-audit --loglevel=error mineflayer >/dev/null)
+    fi
+fi
+
+# Boots the server and waits for full startup, leaving it running.
 # $1 = path to write the server log to.
-run_server() {
+start_server() {
     local logfile="$1"
     local pipe="$WORK/stdin.pipe"
     rm -f "$pipe"; mkfifo "$pipe"
-    sleep 900 > "$pipe" &          # holds the stdin pipe open
+    sleep 1800 > "$pipe" &          # holds the stdin pipe open
     HOLDER_PID=$!
     disown "$HOLDER_PID" 2>/dev/null || true
     ( cd "$SERVER" && exec "$JAVA_BIN" -Xmx1G -jar "$PAPER_JAR" nogui ) \
@@ -84,8 +133,14 @@ run_server() {
         kill -0 "$SERVER_PID" 2>/dev/null || break
         sleep 1
     done
+    [ "$ready" -eq 1 ] || { tail -40 "$logfile" >&2; fail "server did not finish startup"; }
+}
 
+# Stops the running server cleanly.
+stop_server() {
+    local pipe="$WORK/stdin.pipe"
     echo "stop" > "$pipe" 2>/dev/null || true
+    local i
     for ((i = 0; i < 60; i++)); do
         kill -0 "$SERVER_PID" 2>/dev/null || break
         sleep 1
@@ -94,8 +149,6 @@ run_server() {
     wait "$SERVER_PID" 2>/dev/null || true
     kill "$HOLDER_PID" 2>/dev/null || true
     SERVER_PID=""; HOLDER_PID=""
-
-    [ "$ready" -eq 1 ] || { tail -40 "$logfile" >&2; fail "server did not finish startup"; }
 }
 
 # Verifies the plugin enabled without errors. $1 = server log.
@@ -108,12 +161,45 @@ assert_enabled() {
     fi
 }
 
-# --- scenario A: fresh install ---------------------------------------------
+# Portable replacement for `timeout`, which is absent on macOS.
+run_with_timeout() {
+    local seconds="$1"; shift
+    "$@" &
+    local pid=$! i
+    for ((i = 0; i < seconds; i++)); do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            if wait "$pid"; then return 0; else return $?; fi
+        fi
+        sleep 1
+    done
+    kill -9 "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    return 124
+}
+
+# Connects two bots and sends real chat through the plugin. $1 = server log.
+run_chat_test() {
+    local logfile="$1"
+    step "Sending in-game chat through the plugin"
+    if ! run_with_timeout 200 env \
+            NODE_PATH="$BOT_TOOLS/node_modules" BOT_HOST=127.0.0.1 BOT_PORT=25565 \
+            node "$ROOT/scripts/chat-test.js"; then
+        tail -40 "$logfile" >&2
+        fail "in-game chat test failed"
+    fi
+    if grep -q "Cannot handle chat event" "$logfile"; then
+        grep -nE "Cannot handle chat event|Exception" "$logfile" | tail -20 >&2
+        fail "Chatty logged a chat-processing error while bots were chatting"
+    fi
+    echo "✓ chat pipeline processed real in-game messages without errors"
+}
+
+# --- scenario A: fresh install + live chat ---------------------------------
 
 step "Scenario A — fresh install"
 rm -rf "$SERVER/plugins/Chatty" "$SERVER"/plugins/Chatty_old_*
 FRESH_LOG="$WORK/fresh.log"
-run_server "$FRESH_LOG"
+start_server "$FRESH_LOG"
 assert_enabled "$FRESH_LOG"
 [ -f "$SERVER/plugins/Chatty/settings.yml" ]     || fail "settings.yml was not generated"
 [ -f "$SERVER/plugins/Chatty/chats.yml" ]        || fail "chats.yml was not generated"
@@ -121,6 +207,12 @@ assert_enabled "$FRESH_LOG"
 [ -f "$SERVER/plugins/Chatty/lang/ru-RU.yml" ]   || fail "bundled lang/ru-RU.yml was not copied"
 grep -q "Игрок" "$SERVER/plugins/Chatty/lang/ru-RU.yml" || fail "lang/ru-RU.yml has no Russian content"
 echo "✓ plugin enables and generates config (incl. lang files) on a fresh install"
+if [ "$CHAT_TEST" -eq 1 ]; then
+    run_chat_test "$FRESH_LOG"
+else
+    echo "• in-game chat test skipped (node/npm not available)"
+fi
+stop_server
 
 # --- scenario B: legacy v2 migration ---------------------------------------
 
@@ -129,7 +221,7 @@ rm -rf "$SERVER/plugins/Chatty" "$SERVER"/plugins/Chatty_old_*
 mkdir -p "$SERVER/plugins/Chatty"
 cp "$ROOT/scripts/fixtures/v2-config.yml" "$SERVER/plugins/Chatty/config.yml"
 MIGRATE_LOG="$WORK/migrate.log"
-run_server "$MIGRATE_LOG"
+start_server "$MIGRATE_LOG"
 assert_enabled "$MIGRATE_LOG"
 
 grep -q "Migrating legacy Chatty v2 configuration" "$MIGRATE_LOG" || fail "migration did not start"
@@ -153,6 +245,8 @@ grep -q "from-name"       "$PM"        || fail "PM format placeholders were not 
 if grep -q "disabled_chat" "$CHATS"; then fail "a disabled v2 chat was migrated"; fi
 
 echo "✓ legacy v2 config migrated and reloaded successfully"
+stop_server
+
 echo
 grep -E "\[Chatty\].*(Migrat|migrat|review|-)" "$MIGRATE_LOG" || true
 
