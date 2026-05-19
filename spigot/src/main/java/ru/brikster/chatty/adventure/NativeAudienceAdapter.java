@@ -8,6 +8,7 @@ import net.kyori.adventure.identity.Identity;
 import net.kyori.adventure.sound.Sound;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.gson.GsonComponentSerializer;
+import net.kyori.adventure.text.serializer.json.JSONOptions;
 import net.kyori.adventure.title.Title;
 import net.kyori.adventure.title.Title.Times;
 import org.jetbrains.annotations.NotNull;
@@ -43,6 +44,19 @@ public final class NativeAudienceAdapter implements Audience {
             .concat("text.serializer.gson.GsonComponentSerializer");
     private static final String COMPONENT_SERIALIZER_CLASS_NAME = NET_KYORI_ADVENTURE
             .concat("text.serializer.ComponentSerializer");
+
+    /**
+     * Serializer used to bridge Chatty's shaded Adventure to the server's native
+     * Adventure. The two may be different versions, and the JSON schema for click
+     * and hover events changed between them (camelCase {@code clickEvent} ->
+     * snake_case {@code click_event}). The default {@code gson()} serializer emits
+     * only the newest schema, which an older native Adventure cannot read, so it
+     * silently drops every click/hover event. {@link JSONOptions#compatibility()}
+     * emits both schemas, keeping the bridge lossless on any server version.
+     */
+    private static final GsonComponentSerializer COMPATIBLE_GSON = GsonComponentSerializer.builder()
+            .options(JSONOptions.compatibility())
+            .build();
 
     private static final Class<?> SOUND_SOURCE_CLASS;
 
@@ -166,8 +180,15 @@ public final class NativeAudienceAdapter implements Audience {
     }
 
     private static Object convertComponent(@NotNull Component message) throws Throwable {
-        String serializedComponent = GsonComponentSerializer.gson().serialize(message);
-        return DESERIALIZE_METHOD.invoke(GSON_COMPONENT_SERIALIZER, serializedComponent);
+        return DESERIALIZE_METHOD.invoke(GSON_COMPONENT_SERIALIZER, serializeForNative(message));
+    }
+
+    /**
+     * Serializes a component to JSON that any native Adventure version can read
+     * back without losing click/hover events. Package-private for testing.
+     */
+    static String serializeForNative(@NotNull Component message) {
+        return COMPATIBLE_GSON.serialize(message);
     }
 
     private static Object convertSound(@NotNull Sound sound) throws Throwable {
