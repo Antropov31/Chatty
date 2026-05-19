@@ -6,7 +6,7 @@
       <stop offset="1" stop-color="#ef7228"/>
     </linearGradient>
     <style>
-      .txt { fill: #1a1a1a; }
+      .txt { fill: #ededed; }
     </style>
   </defs>
   <g transform="translate(0,740) scale(0.1,-0.1)">

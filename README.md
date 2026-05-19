@@ -1,5 +1,8 @@
 <p align="center">
-  <img src=".github/assets/logo.svg" alt="Chatty" width="420">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.svg">
+    <img src=".github/assets/logo.svg" alt="Chatty" width="420">
+  </picture>
 </p>
 
 # Chatty (Bukkit plugin)
