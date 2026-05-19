@@ -9,6 +9,8 @@
 #   C. legacy server       -> the plugin enables and processes chat on an old
 #                             server (1.8.8), exercising the bundled Adventure
 #                             path and the isolated SQLite driver
+#   D. DiscordSRV coexist  -> Chatty and DiscordSRV initialise cleanly side by
+#                             side, with no classloader or dependency clash
 #
 # Requirements: bash, curl, python3, and a JDK 21 (point JAVA_HOME at it).
 # The in-game chat test additionally needs node + npm; without them it (and
@@ -57,6 +59,17 @@ download_paper() {
     curl -fsSL -o "$out" \
         "https://api.papermc.io/v2/projects/paper/versions/$version/builds/$build/downloads/paper-$version-$build.jar"
     echo "Paper $version build $build"
+}
+
+# Downloads the latest DiscordSRV release jar.  $1 = output jar.
+# Returns non-zero if it cannot be fetched (the scenario is then skipped).
+download_discordsrv() {
+    local out="$1" url
+    url="$(curl -fsSL "https://api.github.com/repos/DiscordSRV/DiscordSRV/releases/latest" \
+        | python3 -c 'import sys, json; print(next(a["browser_download_url"] for a in json.load(sys.stdin)["assets"] if a["name"].endswith(".jar")))')" || return 1
+    [ -n "$url" ] || return 1
+    curl -fsSL -o "$out" "$url" || return 1
+    echo "DiscordSRV: ${url##*/}"
 }
 
 # Locates a Java 11 runtime for the legacy server — modern JDKs cannot run it.
@@ -188,15 +201,18 @@ stop_server() {
     SERVER_PID=""; HOLDER_PID=""
 }
 
-# Verifies the plugin enabled without errors. $1 = server log.
-assert_enabled() {
-    local logfile="$1"
-    grep -q "Enabling Chatty" "$logfile" || { tail -40 "$logfile" >&2; fail "Chatty was not enabled"; }
-    if grep -qE "Error occurred while enabling Chatty|Could not load .plugins.Chatty" "$logfile"; then
-        grep -nE "Chatty|Exception|SEVERE" "$logfile" | tail -40 >&2
-        fail "Chatty failed to enable"
+# Verifies a plugin enabled without a fatal error. $1 = plugin name, $2 = log.
+assert_plugin_enabled() {
+    local name="$1" logfile="$2"
+    grep -q "Enabling $name" "$logfile" || { tail -40 "$logfile" >&2; fail "$name was not enabled"; }
+    if grep -qE "Error occurred while enabling $name|Could not load .plugins.$name" "$logfile"; then
+        grep -nE "$name|Exception|SEVERE" "$logfile" | tail -40 >&2
+        fail "$name failed to enable"
     fi
 }
+
+# Verifies Chatty enabled without errors. $1 = server log.
+assert_enabled() { assert_plugin_enabled "Chatty" "$1"; }
 
 # Portable replacement for `timeout`, which is absent on macOS.
 run_with_timeout() {
@@ -286,6 +302,49 @@ stop_server
 
 echo
 grep -E "\[Chatty\].*(Migrat|migrat|review|-)" "$MIGRATE_LOG" || true
+
+# --- scenario D: DiscordSRV coexistence ------------------------------------
+
+step "Scenario D — DiscordSRV coexistence"
+if download_discordsrv "$WORK/DiscordSRV.jar"; then
+    rm -rf "$SERVER/plugins/Chatty" "$SERVER"/plugins/Chatty_old_* "$SERVER/plugins/DiscordSRV"
+    cp "$JAR" "$SERVER/plugins/Chatty.jar"
+    cp "$WORK/DiscordSRV.jar" "$SERVER/plugins/DiscordSRV.jar"
+    # A syntactically valid but fake bot token makes DiscordSRV run its full
+    # init (config, listeners) before stopping at the Discord connection step.
+    # DiscordSRV shuts itself down on any token that is not a real one, so it
+    # cannot stay enabled in CI; the test therefore verifies the two plugins
+    # initialise cleanly side by side — no classloader/dependency clash and
+    # neither breaks the other's startup — which is all that is checkable
+    # without a real Discord bot token.
+    mkdir -p "$SERVER/plugins/DiscordSRV"
+    cat > "$SERVER/plugins/DiscordSRV/config.yml" <<'EOF'
+BotToken: "MTI3NzAwMDAwMDAwMDAwMDAwMA.GfABCD.thisIsAFakeDiscordSrvSmokeTestTokenNotReal"
+EOF
+    COEXIST_LOG="$WORK/discordsrv.log"
+    start_server "$COEXIST_LOG"
+
+    # Both plugins' onEnable runs synchronously during startup, so once the
+    # server is up each has either finished or logged a failure. DiscordSRV
+    # then shuts itself down asynchronously because the fake token cannot
+    # connect to Discord — that is expected and follows a full, clean init.
+    assert_plugin_enabled "Chatty" "$COEXIST_LOG"
+    assert_plugin_enabled "DiscordSRV" "$COEXIST_LOG"
+    if grep -qE "NoClassDefFoundError|NoSuchMethodError|LinkageError|IncompatibleClassChangeError" "$COEXIST_LOG"; then
+        grep -nE "NoClassDefFoundError|NoSuchMethodError|LinkageError|IncompatibleClassChangeError" "$COEXIST_LOG" | tail -20 >&2
+        fail "classloader/dependency clash with Chatty and DiscordSRV installed together"
+    fi
+    echo "✓ Chatty and DiscordSRV initialise cleanly side by side (no classloader clash)"
+    if [ "$CHAT_TEST" -eq 1 ]; then
+        run_chat_test "$COEXIST_LOG"
+    else
+        echo "• in-game chat test skipped (node/npm not available)"
+    fi
+    stop_server
+    rm -f "$SERVER/plugins/DiscordSRV.jar"
+else
+    echo "• DiscordSRV scenario skipped (could not download DiscordSRV)"
+fi
 
 # --- scenario C: legacy server ---------------------------------------------
 

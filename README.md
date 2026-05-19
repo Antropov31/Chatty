@@ -57,8 +57,8 @@ Run the unit tests:
 
 Run the end-to-end smoke test — it boots real Minecraft servers with the built
 plugin and verifies that it enables cleanly on a fresh install, processes live
-in-game chat, correctly migrates a legacy v2 configuration, and still runs on a
-legacy server (1.8.8):
+in-game chat, correctly migrates a legacy v2 configuration, still runs on a
+legacy server (1.8.8), and coexists with DiscordSRV:
 
 ```shell script
 ./gradlew build
