@@ -3,10 +3,28 @@ plugins {
     id 'xyz.jpenilla.run-paper' version '2.3.0'
 }
 
+configurations {
+    // SQLite driver: embedded as a nested jar (see embedSqliteDriver) and loaded
+    // at runtime through an isolated classloader, NOT merged into the plugin jar.
+    sqliteDriver
+}
+
+// Stages the bundled SQLite driver so shadowJar can embed it verbatim. It
+// cannot be shaded/relocated like the other dependencies: its native library
+// has the original org/sqlite class paths compiled into the binary, which a
+// relocation cannot rewrite. The ".jardata" extension keeps shadowJar from
+// unzipping it — shadow explodes anything ending in ".jar".
+def embedSqliteDriver = tasks.register('embedSqliteDriver', Copy) {
+    from(configurations.sqliteDriver) { rename { 'sqlite-jdbc.jardata' } }
+    into layout.buildDirectory.dir('embedded-sqlite/lib')
+}
+
 tasks {
     shadowJar {
         archiveFileName = "Chatty-${rootProject.version}.jar"
         destinationDirectory = rootProject.layout.buildDirectory.dir('libs')
+        dependsOn embedSqliteDriver
+        from layout.buildDirectory.dir('embedded-sqlite')
         def relocations = [
                 'org.bstats',
                 'com.google.gson',
@@ -73,6 +91,7 @@ dependencies {
     implementation "cloud.commandframework:cloud-minecraft-extras:$cloudVersion"
 
     implementation 'com.zaxxer:HikariCP:5.1.0'
+    sqliteDriver('org.xerial:sqlite-jdbc:3.47.1.0') { transitive = false }
     implementation 'org.flywaydb:flyway-core:9.22.3'
     implementation 'org.flywaydb:flyway-mysql:9.22.3'
     implementation 'org.postgresql:postgresql:42.7.1'

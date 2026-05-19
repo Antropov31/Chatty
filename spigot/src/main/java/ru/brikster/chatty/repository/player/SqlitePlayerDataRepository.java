@@ -33,8 +33,13 @@ public final class SqlitePlayerDataRepository implements PlayerDataRepository {
             throw new IllegalStateException("Cannot create data folder", e);
         }
 
+        String jdbcUrl = "jdbc:sqlite:" + dataFolder.resolve("database.sqlite");
+
         HikariConfig config = new HikariConfig();
-        config.setJdbcUrl("jdbc:sqlite:" + dataFolder.resolve("database.sqlite"));
+        // Use the bundled driver loaded by an isolated classloader instead of a
+        // bare jdbcUrl — otherwise HikariCP picks up whatever org.sqlite the
+        // server ships, which on legacy servers is an ancient, broken build.
+        config.setDataSource(IsolatedSqliteDriver.createDataSource(dataFolder, jdbcUrl));
         config.setPoolName("Chatty");
         config.setMaximumPoolSize(8);
 
