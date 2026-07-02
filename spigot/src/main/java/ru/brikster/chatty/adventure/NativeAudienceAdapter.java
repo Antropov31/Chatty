@@ -225,12 +225,14 @@ public final class NativeAudienceAdapter implements Audience {
         return SOUND_FACTORY_METHOD.invoke(name, source, sound.volume(), sound.pitch());
     }
 
-    private static Object getCachedOrConvert(Object object, UncheckedCallable callable)
+    private static <T> T getCachedOrConvert(Object object, UncheckedCallable<T> callable)
             throws ExecutionException {
-        return CONVERTED_OBJECTS_CACHE.get(object, callable);
+        @SuppressWarnings("unchecked")
+        T result = (T) CONVERTED_OBJECTS_CACHE.get(object, callable);
+        return result;
     }
 
-    interface UncheckedCallable extends Callable {
+    interface UncheckedCallable<T> extends Callable<T> {
 
         @Override
         default T call() {
