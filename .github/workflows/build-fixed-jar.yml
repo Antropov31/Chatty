@@ -1,0 +1,58 @@
+name: Build Fixed Chatty Jar
+
+# Собирает готовый .jar плагина Chatty из ветки v3 (актуальный код).
+# v3 версионно-независим: старого костыля NMSUtil с substring здесь нет вообще,
+# поэтому jar работает на современных Purpur/Paper, включая 26.2, и не кикает игроков.
+# Wrapper в v3 = Gradle 8.8 (совместим с Java 21), зависимости тянутся из живых
+# репозиториев (в отличие от мёртвой ветки master/2.x с битым ci.nametagedit.com).
+
+on:
+  push:
+    branches: [ v3 ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      chatty_version:
+        description: 'Версия для имени jar (Chatty-<version>.jar)'
+        required: true
+        default: '3.0.0-fixed'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Собрать плагин (shadowJar через wrapper)
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build --no-daemon --stacktrace -PchattyVersion=${{ github.event.inputs.chatty_version || '3.0.0-fixed' }}
+
+      - name: Показать собранные артефакты
+        run: ls -lah build/libs
+
+      - name: Загрузить jar как артефакт
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chatty-plugin-jar
+          path: build/libs/Chatty-*.jar
+          if-no-files-found: error
+
+      - name: Приложить jar к релизу (только для тегов v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/libs/Chatty-*.jar
