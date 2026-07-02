@@ -58,11 +58,15 @@ public final class NativeAudienceAdapter implements Audience {
             .options(JSONOptions.compatibility())
             .build();
 
-    private static final Class<?> SOUND_SOURCE_CLASS;
+    private static final Class SOUND_SOURCE_CLASS;
 
     private static final Lookup LOOKUP;
 
     private static final MethodHandle SEND_MESSAGE_METHOD;
+    // Optional: net.kyori.adventure.audience.Audience#sendMessage(Identity, Component)
+    // was deprecated for removal and is GONE from modern native Adventure. When it
+    // is missing this stays null and we fall back to the plain sendMessage overload,
+    // instead of poisoning the whole class from the static initializer.
     private static final MethodHandle SEND_MESSAGE_WITH_IDENTITY_METHOD;
     private static final MethodHandle SEND_ACTION_BAR_METHOD;
     private static final MethodHandle PLAY_SOUND_METHOD;
@@ -79,19 +83,22 @@ public final class NativeAudienceAdapter implements Audience {
     static {
         try {
             LOOKUP = MethodHandles.lookup();
-            Class<?> audienceClass = Class.forName(AUDIENCE_CLASS_NAME);
-            Class<?> componentClass = Class.forName(COMPONENT_CLASS_NAME);
-            Class<?> identityClass = Class.forName(IDENTITY_CLASS_NAME);
-            Class<?> keyClass = Class.forName(KEY_CLASS_NAME);
-            Class<?> soundClass = Class.forName(SOUND_CLASS_NAME);
-            Class<?> titleClass = Class.forName(TITLE_CLASS_NAME);
-            Class<?> titleTimesClass = Class.forName(TITLE_TIMES_CLASS_NAME);
+            Class audienceClass = Class.forName(AUDIENCE_CLASS_NAME);
+            Class componentClass = Class.forName(COMPONENT_CLASS_NAME);
+            Class identityClass = Class.forName(IDENTITY_CLASS_NAME);
+            Class keyClass = Class.forName(KEY_CLASS_NAME);
+            Class soundClass = Class.forName(SOUND_CLASS_NAME);
+            Class titleClass = Class.forName(TITLE_CLASS_NAME);
+            Class titleTimesClass = Class.forName(TITLE_TIMES_CLASS_NAME);
             SOUND_SOURCE_CLASS = Class.forName(SOUND_SOURCE_CLASS_NAME);
 
             SEND_MESSAGE_METHOD = LOOKUP.findVirtual(audienceClass, "sendMessage",
                     MethodType.methodType(void.class, componentClass));
-            SEND_MESSAGE_WITH_IDENTITY_METHOD = LOOKUP.findVirtual(audienceClass, "sendMessage",
+
+            // Optional overload. Absent on modern Adventure -> fall back at call time.
+            SEND_MESSAGE_WITH_IDENTITY_METHOD = findVirtualOrNull(audienceClass, "sendMessage",
                     MethodType.methodType(void.class, identityClass, componentClass));
+
             SEND_ACTION_BAR_METHOD = LOOKUP.findVirtual(audienceClass, "sendActionBar",
                     MethodType.methodType(void.class, componentClass));
             PLAY_SOUND_METHOD = LOOKUP.findVirtual(audienceClass, "playSound",
@@ -99,9 +106,9 @@ public final class NativeAudienceAdapter implements Audience {
             SHOW_TITLE_METHOD = LOOKUP.findVirtual(audienceClass, "showTitle",
                     MethodType.methodType(void.class, titleClass));
 
-            Class<?> gsonComponentSerializerClass = Class.forName(GSON_SERIALIZER_CLASS_NAME);
+            Class gsonComponentSerializerClass = Class.forName(GSON_SERIALIZER_CLASS_NAME);
             GSON_COMPONENT_SERIALIZER = gsonComponentSerializerClass.getMethod("gson").invoke(null);
-            Class<?> componentSerializerClass = Class.forName(COMPONENT_SERIALIZER_CLASS_NAME);
+            Class componentSerializerClass = Class.forName(COMPONENT_SERIALIZER_CLASS_NAME);
             DESERIALIZE_METHOD = LOOKUP.findVirtual(componentSerializerClass, "deserialize",
                     MethodType.methodType(componentClass, Object.class));
             IDENTITY_FACTORY_METHOD = LOOKUP.findStatic(identityClass, "identity",
@@ -125,6 +132,19 @@ public final class NativeAudienceAdapter implements Audience {
         }
     }
 
+    /**
+     * Resolves an optional virtual method handle. Returns {@code null} (instead of
+     * throwing) when the method does not exist on the running Adventure version, so
+     * a single removed overload can never poison this class's static initializer.
+     */
+    private static MethodHandle findVirtualOrNull(Class<?> owner, String name, MethodType type) {
+        try {
+            return LOOKUP.findVirtual(owner, name, type);
+        } catch (NoSuchMethodException | IllegalAccessException e) {
+            return null;
+        }
+    }
+
     private final Object target;
 
     public NativeAudienceAdapter(Object target) {
@@ -142,8 +162,15 @@ public final class NativeAudienceAdapter implements Audience {
     @SuppressWarnings("deprecation")
     @Override
     public void sendMessage(@NotNull Identity source, @NotNull Component message) {
-        Object identity = getCachedOrConvert(source, () -> IDENTITY_FACTORY_METHOD.invoke(source.uuid()));
         Object convertedComponent = getCachedOrConvert(message, () -> convertComponent(message));
+        // The identity-aware overload was removed from modern native Adventure.
+        // When unavailable, drop the (chat-signing) identity and send plainly:
+        // the message still reaches the player, just without the sender identity.
+        if (SEND_MESSAGE_WITH_IDENTITY_METHOD == null) {
+            SEND_MESSAGE_METHOD.invoke(target, convertedComponent);
+            return;
+        }
+        Object identity = getCachedOrConvert(source, () -> IDENTITY_FACTORY_METHOD.invoke(source.uuid()));
         SEND_MESSAGE_WITH_IDENTITY_METHOD.invoke(target, identity, convertedComponent);
     }
 
@@ -194,16 +221,16 @@ public final class NativeAudienceAdapter implements Audience {
     private static Object convertSound(@NotNull Sound sound) throws Throwable {
         Object name = KEY_FACTORY_METHOD.invoke(sound.name().namespace(), sound.name().value());
         @SuppressWarnings({"rawtypes", "unchecked"})
-        Object source = Enum.valueOf((Class<? extends Enum>) SOUND_SOURCE_CLASS, sound.source().name());
+        Object source = Enum.valueOf((Class) SOUND_SOURCE_CLASS, sound.source().name());
         return SOUND_FACTORY_METHOD.invoke(name, source, sound.volume(), sound.pitch());
     }
 
-    private static Object getCachedOrConvert(Object object, UncheckedCallable<Object> callable)
+    private static Object getCachedOrConvert(Object object, UncheckedCallable callable)
             throws ExecutionException {
         return CONVERTED_OBJECTS_CACHE.get(object, callable);
     }
 
-    interface UncheckedCallable<T> extends Callable<T> {
+    interface UncheckedCallable extends Callable {
 
         @Override
         default T call() {
